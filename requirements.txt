@@ -1,0 +1,23 @@
+# requirements.txt - Dependencies for Banco Sabadell Sentiment Analysis App
+
+# Core Dependencies
+streamlit>=1.28.0
+cohere>=4.37.0
+pandas>=2.0.0
+plotly>=5.17.0
+
+# Audio Transcription
+requests>=2.31.0
+
+# Additional Utilities
+python-dateutil>=2.8.2
+regex>=2023.0.0
+
+# Optional: For enhanced performance
+numpy>=1.24.0
+
+# Development Dependencies (optional)
+# pytest>=7.4.0
+# black>=23.0.0
+# flake8>=6.0.0
+ffmpeg
