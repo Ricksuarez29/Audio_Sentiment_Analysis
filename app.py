@@ -237,6 +237,9 @@ def show_audio_transcription_tab():
                     # Main result
                     transcribed_text = result["formatted_conversation"]
 
+                    #Save to session state
+                    st.session_state.transcribed_text = transcribed_text
+
                     st.text_area(
                         "Resultado (copia esto al analizador de texto):",
                         transcribed_text,
@@ -265,7 +268,8 @@ def show_audio_transcription_tab():
                     
                     # Show full transcript
                     with st.expander("📄 Ver transcripción completa"):
-                        st.write(result.get("full_transcript", ""))    
+                        st.write(result.get("full_transcript", ""))
+                    
 
 
 
@@ -381,6 +385,12 @@ def show_vader_analysis_tab(format_type, custom_prompt):
                 if not customer_segments:
                     st.error("❌ No se detectaron segmentos del cliente para analizar")
                     return
+                
+                # Call the new function to analyze if the call solved the problem
+                solved_indicator = st.session_state.analyzer.analyze_call_solution(conversation_text)
+                
+                # Save the value in the session for later use in other sections
+                st.session_state["solved_indicator"] = solved_indicator             
 
                 sid = SentimentIntensityAnalyzer()
                 results_list = []
@@ -407,46 +417,183 @@ def show_vader_analysis_tab(format_type, custom_prompt):
                 st.subheader("📊 Resultados del Análisis")
 
                 if not df_results.empty:
-                    # Calcular métricas clave basadas en el puntaje "Compound"
+                    # Calculate the average sentiment scores
                     total_segments = df_results.shape[0]
-                    n = 3  
-                    if total_segments >= n:
-                        first_avg = df_results.iloc[:n]["Compound"].mean()
-                        last_avg = df_results.iloc[-n:]["Compound"].mean()
+                    if total_segments < 6:
+                        # Not enough segments for partitioning; use overall average.
+                        overall_avg = df_results["Compound"].mean()
+                        first_avg = overall_avg
+                        middle_avg = overall_avg
+                        last_avg = overall_avg
+
+                    elif total_segments < 10:
+                        # Short call: Use first 2, middle 2, and final 2.
+                        first_avg = df_results.iloc[:2]["Compound"].mean()
+                        last_avg = df_results.iloc[-2:]["Compound"].mean()
+                        mid_index = total_segments // 2
+                        # For even number of segments, take the two central segments.
+                        if total_segments % 2 == 0:
+                            middle_avg = df_results.iloc[mid_index - 1: mid_index + 1]["Compound"].mean()
+                        else:
+                            # For odd, select the middle two segments (if possible).
+                            if mid_index - 1 >= 0:
+                                middle_avg = df_results.iloc[mid_index - 1: mid_index + 1]["Compound"].mean()
+                            else:
+                                middle_avg = df_results.iloc[mid_index]["Compound"]
+
+                    elif total_segments < 30:
+                        # Medium call: first 3 segments, middle one, and final 3.
+                        first_avg = df_results.iloc[:3]["Compound"].mean()
+                        last_avg = df_results.iloc[-3:]["Compound"].mean()
+                        mid_index = total_segments // 2
+                        # Use a window of 5 segments.
+                        start_mid = max(0, mid_index - 2)
+                        end_mid = start_mid + 5
+                        middle_avg = df_results.iloc[start_mid:end_mid]["Compound"].mean()
+
                     else:
-                        # Si es muy corta, usamos el promedio de todo
-                        first_avg = df_results["Compound"].mean()
-                        last_avg = first_avg
+                        # Big call: first 5 segments, a window of 5 centered around the middle, and final 5 segments.
+                        first_avg = df_results.iloc[:5]["Compound"].mean()
+                        last_avg = df_results.iloc[-5:]["Compound"].mean()
+                        mid_index = total_segments // 2
+                        # Use a window of 5 segments.
+                        start_mid = max(0, mid_index - 2)
+                        end_mid = start_mid + 5
+                        middle_avg = df_results.iloc[start_mid:end_mid]["Compound"].mean()
 
-                    customer_improvement = last_avg - first_avg
-                    call_success = customer_improvement > 0
-                    avg_compound = df_results["Compound"].mean() * 100  # expresado en porcentaje
+
+                    # Raw improvement (difference between final and initial average)
+                    raw_improvement = last_avg - first_avg
+
+                    # Get the solution indicator previously stored (1 = solved, 0 = not)
+                    solved_indicator = st.session_state.get("solved_indicator", 0)
+                    call_solved_status = "Resuelto" if solved_indicator == 1 else "No Resuelto"
 
 
-                    delta_str = f"↑ Mejoró" if customer_improvement > 0 else f"↓ Empeoró"
-                    # Mostrar las métricas en columnas
-                    col1, col2 = st.columns(2)
+                    # This index evaluates the recovery potential relative to the negative starting point.
+                    # If the call began with a negative sentiment, the maximum possible improvement is (1 - first_avg).
+                    if solved_indicator == 1:
+                        # Recovery score is positive if problem was solved, even if sentiment drops
+                        if last_avg < first_avg:
+                            # Drop in sentiment, but solved → interpret as emotionally costly resolution
+                            sentiment_recovery_index = 0.5 * (1 + (last_avg - first_avg))  # scaled drop
+                        else:
+                            # Regular improvement case
+                            sentiment_recovery_index = 1.0 * (last_avg - first_avg + 1) / 2  # normalized to 0–1
+                    else:
+                        # Not solved → use negative or zero score
+                        sentiment_recovery_index = min(0, last_avg - first_avg)
+
+                    # Convert the recovery index to percentage scale
+                    sri_percent = sentiment_recovery_index * 100
+
+                    # Also calculate the overall emotional health average (Compound mean percentage)
+                    avg_compound = df_results["Compound"].mean()
+
+                    # Now, display the enhanced metrics in a row of columns
+                    col1, col2, col3, col5, = st.columns(4)
                     with col1:
-                        st.metric(
-                            "Mejora del Cliente",
-                            f"{customer_improvement:+.2f}",
-                            delta=delta_str,
-                            delta_color="normal" if customer_improvement >= 0 else "inverse"
-                        )
+                        st.metric("Estado de Resolución", call_solved_status)
                     with col2:
-                        success_text = "✅ Exitosa" if call_success else "⚠️ Requiere Atención"
-                        st.metric("Estado de Llamada", success_text)
-
-                    col3, col4 = st.columns(2)
+                        delta_str = "Mejoró" if raw_improvement >= 0 else "Empeoró"
+                        st.metric(
+                            label="Estado del Cliente",
+                            value=f"{raw_improvement:+.2f}",
+                            delta=delta_str,
+                            delta_color="normal" if raw_improvement >= 0 else "inverse"
+                        )
                     with col3:
-                        st.metric("Total Segmentos", total_segments)
-                    with col4:
-                        st.metric("Salud Emocional Promedio", f"{avg_compound:.1f}%")
+                        st.metric("Índice de Recuperación", f"{sri_percent:.1f}%")
+
+                    with col5:
+                        st.metric("Salud Emocional Promedio", f"{avg_compound:.1f}")
+
+                    # Helper function for colored sentiment text.
+                    def colored_sentiment(sentiment):
+                        if sentiment == "positive":
+                            return '<span style="color:green; font-weight:bold;">positive</span>'
+                        elif sentiment == "negative":
+                            return '<span style="color:red; font-weight:bold;">negative</span>'
+                        else:
+                            return '<span style="color:orange; font-weight:bold;">neutral</span>'
+
+                    # Helper function for colored trend text.
+                    def colored_trend(trend_value):
+                        if trend_value == "improved":
+                            return '<span style="color:green; font-weight:bold;">improved</span>'
+                        elif trend_value == "worsened":
+                            return '<span style="color:red; font-weight:bold;">worsened</span>'
+                        else:
+                            return '<span style="color:orange; font-weight:bold;">remained stable</span>'
+
+                    # Determine sentiment category from a compound score.
+                    def sentiment_category(score):
+                        if score >= 0.05:
+                            return "positive"
+                        elif score <= -0.05:
+                            return "negative"
+                        else:
+                            return "neutral"
+
+                    # Assume that first_avg, middle_avg, and last_avg were determined 
+                    # from partitioning the conversation according to its length.
+                    initial_sentiment = sentiment_category(first_avg)
+                    middle_sentiment = sentiment_category(middle_avg)
+                    final_sentiment = sentiment_category(last_avg)
+
+                    # Determine the trend from the beginning to the mid part.
+                    tolerance = 0.01
+                    if abs(middle_avg - first_avg) < tolerance:
+                        trend = "remained stable"
+                    elif middle_avg > first_avg:
+                        trend = "improved"
+                    else:
+                        trend = "worsened"
+
+                    # Build the final summary message.
+                    if solved_indicator == 1:
+                        # Call was solved → show positive phrases in green.
+                        if final_sentiment == "positive":
+                            final_message = (
+                                f"The call began with a {colored_sentiment(initial_sentiment)} sentiment, "
+                                f"{colored_trend(trend)} during the mid part of the call, and finally ended with a "
+                                f"{colored_sentiment(final_sentiment)} tone as the agent was "
+                                f"<span style='color:green; font-weight:bold;'>able to solve</span> the problem."
+                            )
+                        elif final_sentiment == "neutral":
+                            final_message = (
+                                f"The call began with a {colored_sentiment(initial_sentiment)} sentiment, "
+                                f"{colored_trend(trend)} during the mid part of the call, and although it ended with a "
+                                f"{colored_sentiment(final_sentiment)} tone, the agent "
+                                f"<span style='color:green; font-weight:bold;'>managed to solve</span> the problem."
+                            )
+                        elif final_sentiment == "negative":
+                            final_message = (
+                                f"The call began with a {colored_sentiment(initial_sentiment)} sentiment, "
+                                f"{colored_trend(trend)} during the mid part of the call, and although it ended with a "
+                                f"{colored_sentiment(final_sentiment)} tone, the problem was "
+                                f"<span style='color:green; font-weight:bold;'>successfully resolved</span>."
+                            )
+                    else:
+                        # Call not solved → show outcome text in a dark red
+                        final_message = (
+                            f"The call began with a {colored_sentiment(initial_sentiment)} sentiment, "
+                            f"{colored_trend(trend)} during the mid part of the call, and finally ended with a "
+                            f"{colored_sentiment(final_sentiment)} tone as the agent was "
+                            f"<span style='color:firebrick; font-weight:bold;'>not able to solve</span> the problem."
+                        )
+
+                    final_message_html = f"""
+                    <div style="text-align: center; font-size: 24px; margin: 20px 0;">
+                        {final_message}
+                    </div>
+                    """
+                    st.markdown(final_message_html, unsafe_allow_html=True)
+  
+
   
             
-                
-                st.markdown("### 📋 Tabla de Resultados del Análisis VADER")
-                st.dataframe(df_results, use_container_width=True)
+##-----------------------------------------------------------------------------------                   
 
                 st.divider()
                 st.subheader("📈 Evolución del Sentimiento (Compound Score)")

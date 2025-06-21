@@ -299,3 +299,42 @@ class SabadellSentimentAnalyzer:
             recommendations.append("📞 Consider proactive follow-up call")
         
         return recommendations
+    
+# Call Solution Analysis
+    def analyze_call_solution(self, transcribed_text: str, custom_prompt: Optional[str] = None) -> int:
+        """
+        Analyze the customer service call transcript using Cohere to determine if the customer's issue was resolved.
+        Return 1 if resolved, 0 otherwise.
+        """
+        if not self.api_connected:
+            st.error("Cohere API is not connected")
+            return 0
+
+        if custom_prompt:
+            prompt = custom_prompt.format(transcribed_text=transcribed_text)
+        else:
+            prompt = (
+                "Analyze the following customer service call transcript and determine if the customer's issue was resolved during the call. "
+                "Return ONLY a JSON object with a single key 'solved' set to 1 if the problem was resolved, or 0 if not resolved. Do not include any extra text.\n\n"
+                "Transcript:\n" + transcribed_text
+            )
+
+        try:
+            response = self.co.chat(
+                model=self.settings["model"],
+                message=prompt,
+                temperature=self.settings["temperature"],
+                max_tokens=self.settings["max_tokens"]
+            )
+            response_text = response.text.strip()
+
+            if not response_text:
+                st.error("DEBUG: Received empty response from Cohere.")
+                return 0
+
+            answer_data = json.loads(response_text)
+            solved_value = answer_data.get("solved", 0)
+            return int(solved_value)
+        except Exception as e:
+            st.error(f"Error analyzing call solution: {str(e)}")
+            return 0
