@@ -774,14 +774,20 @@ def show_text_analysis_tab(format_type, custom_prompt):
         if st.button("🔍 Analizar Conversación", type="primary", key="analyze_text"):
             with st.spinner("🔄 Analizando conversación..."):
                 try:
-                    # Perform analysis
-                    results = st.session_state.analyzer.analyze_full_call(segments, custom_prompt)
-                    
-                    st.success("✅ ¡Análisis completado!")
-                    
-                    # Display results
-                    show_results(results)
-                    
+                    # Filter only customer segments before analysis
+                    customer_aliases = ["cliente", "customer", "client"]
+                    customer_segments = [
+                        seg for seg in segments
+                        if any(alias in seg["speaker"].lower() for alias in customer_aliases)
+                    ]
+                    if not customer_segments:
+                        st.error("❌ No se detectaron segmentos del cliente para analizar")
+                    else:
+                        # Perform analysis only on customer segments
+                        results = st.session_state.analyzer.analyze_full_call(customer_segments, custom_prompt)
+                        st.success("✅ ¡Análisis completado!")
+                        # Display results
+                        show_results(results)
                 except Exception as e:
                     st.error(f"❌ Error durante el análisis: {str(e)}")
 
