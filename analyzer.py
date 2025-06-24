@@ -172,26 +172,20 @@ class SabadellSentimentAnalyzer:
         
         # Separate by speaker type
         customer_segments = self._filter_by_speaker_type(analyzed_segments, 'customer')
-        agent_segments = self._filter_by_speaker_type(analyzed_segments, 'agent')
-        
+        # Remove agent_segments and agent_improvement
         # Calculate improvement metrics
         customer_improvement = self._calculate_improvement(customer_segments)
-        agent_improvement = self._calculate_improvement(agent_segments)
         overall_improvement = self._calculate_overall_improvement(analyzed_segments)
-        
         # Determine call success
         call_success = customer_improvement > 0
-        
         # Generate comprehensive results
         return {
             'call_id': f"call_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
             'timestamp': datetime.now().isoformat(),
             'analyzed_segments': analyzed_segments,
             'customer_trajectory': customer_segments,
-            'agent_trajectory': agent_segments,
             'metrics': {
                 'customer_improvement': customer_improvement,
-                'agent_improvement': agent_improvement,
                 'overall_improvement': overall_improvement,
                 'call_success': call_success,
                 'total_segments': len(analyzed_segments),
@@ -199,7 +193,7 @@ class SabadellSentimentAnalyzer:
                 'error_count': len([s for s in analyzed_segments if s['analysis_status'] == 'error'])
             },
             'summary': self._generate_call_summary(analyzed_segments, customer_improvement),
-            'recommendations': self._generate_recommendations(customer_improvement, agent_improvement)
+            'recommendations': self._generate_recommendations(customer_improvement)
         }
     
     def _filter_by_speaker_type(self, segments: List[Dict], speaker_type: str) -> List[Dict]:
@@ -273,11 +267,9 @@ class SabadellSentimentAnalyzer:
             'total_exchanges': len(segments)
         }
     
-    def _generate_recommendations(self, customer_improvement: float, agent_improvement: float) -> List[str]:
-        """Generate actionable recommendations based on analysis"""
-        
+    def _generate_recommendations(self, customer_improvement: float) -> List[str]:
+        """Generate actionable recommendations based on customer improvement only"""
         recommendations = []
-        
         if customer_improvement > 1:
             recommendations.append("✅ Excellent customer experience - call resolved successfully")
         elif customer_improvement > 0:
@@ -286,18 +278,8 @@ class SabadellSentimentAnalyzer:
             recommendations.append("⚠️ Customer satisfaction declined - follow-up recommended")
         else:
             recommendations.append("➡️ Customer sentiment remained stable")
-        
-        if agent_improvement > 0:
-            recommendations.append("👍 Agent performance was effective")
-        elif agent_improvement < -1:
-            recommendations.append("🔄 Agent may benefit from additional training")
-        
-        # Additional recommendations based on patterns
-        if customer_improvement > 0 and agent_improvement > 0:
-            recommendations.append("🎯 Strong call resolution - use as training example")
-        elif customer_improvement < 0:
+        if customer_improvement < 0:
             recommendations.append("📞 Consider proactive follow-up call")
-        
         return recommendations
     
 # Call Solution Analysis

@@ -790,36 +790,26 @@ def show_text_analysis_tab(format_type, custom_prompt):
 
 def show_results(results):
     """Display analysis results"""
-    
     # Key metrics
     st.subheader("📊 Resultados del Análisis")
-    
     metrics = results['metrics']
     summary = results['summary']
-    
     col1, col2,  = st.columns(2)
-    
     with col1:
         st.metric(
             "Mejora del Cliente",
             f"{metrics['customer_improvement']:+.1f}",
             delta=f"{'Mejoró' if metrics['customer_improvement'] > 0 else 'Empeoró'}"
         )
-    
     with col2:
         success_text = "✅ Exitosa" if metrics['call_success'] else "⚠️ Requiere Atención"
         st.metric("Estado de Llamada", success_text)
-    
     col3, col4 = st.columns(2)
-    
     with col3:
         st.metric("Total Segmentos", metrics['total_segments'])
-    
     with col4:
         accuracy = (metrics['successful_analyses'] / metrics['total_segments']) * 100
         st.metric("Precisión", f"{accuracy:.1f}%")
-    
-    # Call outcome
     outcome_mapping = {
         'highly_successful': '🎉 Muy Exitosa',
         'successful': '✅ Exitosa', 
@@ -828,33 +818,14 @@ def show_results(results):
     }
     outcome_text = outcome_mapping.get(summary['call_outcome'], summary['call_outcome'])
     st.info(f"**Resultado:** {outcome_text}")
-    
-    # Recommendations
     if results.get('recommendations'):
         st.subheader("💡 Recomendaciones")
         for rec in results['recommendations']:
             st.write(f"• {rec}")
-    
-    # Visualizations
     st.subheader("📈 Análisis Visual")
-    
-    # Timeline chart
     create_timeline_chart(results)
-    
-    # Other charts
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        create_sentiment_pie(results)
-    
-    with col2:
-        create_speaker_comparison(results)
-    
-    # Detailed table
     st.subheader("📋 Resultados Detallados")
     show_detailed_table(results)
-    
-    # Export options
     st.subheader("💾 Exportar")
     show_export_options(results)
 
@@ -906,40 +877,6 @@ def create_sentiment_pie(results):
         title="Distribución de Sentimientos",
         color_discrete_sequence=colors
     )
-    
-    st.plotly_chart(fig, use_container_width=True)
-
-def create_speaker_comparison(results):
-    """Create speaker sentiment comparison"""
-    
-    customer_segments = results.get('customer_trajectory', [])
-    agent_segments = results.get('agent_trajectory', [])
-    
-    def calc_avg_sentiment(segments):
-        if not segments:
-            return 0
-        sentiment_values = {'negative': -1, 'neutral': 0, 'positive': 1}
-        return sum(sentiment_values[s['sentiment']] * s['intensity'] for s in segments) / len(segments)
-    
-    customer_avg = calc_avg_sentiment(customer_segments)
-    agent_avg = calc_avg_sentiment(agent_segments)
-    
-    fig = go.Figure(data=[
-        go.Bar(
-            x=['Cliente', 'Agente'],
-            y=[customer_avg, agent_avg],
-            marker_color=['#ff6b6b', '#4ecdc4'],
-            text=[f'{customer_avg:.2f}', f'{agent_avg:.2f}'],
-            textposition='auto'
-        )
-    ])
-    
-    fig.update_layout(
-        title="Sentimiento Promedio por Hablante",
-        yaxis_title="Sentimiento Promedio"
-    )
-    
-    fig.add_hline(y=0, line_dash="dash", line_color="gray")
     
     st.plotly_chart(fig, use_container_width=True)
 

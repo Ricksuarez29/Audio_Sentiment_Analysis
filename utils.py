@@ -238,52 +238,6 @@ class VisualizationManager:
         return fig
     
     @staticmethod
-    def create_agent_timeline(results: Dict[str, Any]) -> go.Figure:
-        """Create agent sentiment timeline"""
-        
-        # Filter agent data
-        agent_data = []
-        for segment in results['analyzed_segments']:
-            speaker_lower = segment['speaker'].lower()
-            if speaker_lower in ['agent', 'agente', 'operador', 'gestor']:
-                numeric_score = {'positive': 1, 'neutral': 0, 'negative': -1}[segment['sentiment']]
-                weighted_score = numeric_score * segment['intensity']
-                
-                agent_data.append({
-                    'timestamp': segment['timestamp'],
-                    'sentiment_score': weighted_score,
-                    'text': segment['original_text'][:50] + '...' if len(segment['original_text']) > 50 else segment['original_text']
-                })
-        
-        if not agent_data:
-            # Return empty figure if no agent data
-            fig = go.Figure()
-            fig.update_layout(title="👤 Agente - Sin datos disponibles")
-            return fig
-        
-        df = pd.DataFrame(agent_data)
-        
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=df['timestamp'],
-            y=df['sentiment_score'],
-            mode='lines+markers',
-            name='Agente',
-            line=dict(color='#4ECDC4', width=3),
-            marker=dict(size=8)
-        ))
-        
-        fig.add_hline(y=0, line_dash="dash", line_color="gray")
-        fig.update_layout(
-            title="👤 Evolución del Sentimiento - Agente",
-            xaxis_title="Tiempo",
-            yaxis_title="Puntuación",
-            height=400
-        )
-        
-        return fig
-    
-    @staticmethod
     def create_sentiment_distribution(results: Dict[str, Any]) -> go.Figure:
         """Create sentiment distribution pie chart"""
         
@@ -303,44 +257,6 @@ class VisualizationManager:
             textinfo='percent+label',
             hovertemplate='<b>%{label}</b><br>Count: %{value}<br>Percentage: %{percent}<extra></extra>'
         )
-        
-        return fig
-    
-    @staticmethod
-    def create_speaker_comparison(results: Dict[str, Any]) -> go.Figure:
-        """Create speaker sentiment comparison"""
-        
-        customer_segments = results.get('customer_trajectory', [])
-        agent_segments = results.get('agent_trajectory', [])
-        
-        # Calculate average sentiments
-        def calc_avg_sentiment(segments):
-            if not segments:
-                return 0
-            sentiment_values = {'negative': -1, 'neutral': 0, 'positive': 1}
-            return sum(sentiment_values[s['sentiment']] * s['intensity'] for s in segments) / len(segments)
-        
-        customer_avg = calc_avg_sentiment(customer_segments)
-        agent_avg = calc_avg_sentiment(agent_segments)
-        
-        fig = go.Figure(data=[
-            go.Bar(
-                x=['Cliente', 'Agente'],
-                y=[customer_avg, agent_avg],
-                marker_color=['#FF6B6B' if customer_avg < 0 else '#4ECDC4', 
-                             '#FF6B6B' if agent_avg < 0 else '#4ECDC4'],
-                text=[f'{customer_avg:.2f}', f'{agent_avg:.2f}'],
-                textposition='auto'
-            )
-        ])
-        
-        fig.update_layout(
-            title="Comparación de Sentimiento Promedio por Hablante",
-            yaxis_title="Sentimiento Promedio",
-            height=VIZ_CONFIG['chart_height']
-        )
-        
-        fig.add_hline(y=0, line_dash="dash", line_color="gray")
         
         return fig
 
