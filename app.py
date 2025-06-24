@@ -794,22 +794,39 @@ def show_results(results):
     st.subheader("📊 Resultados del Análisis")
     metrics = results['metrics']
     summary = results['summary']
-    col1, col2,  = st.columns(2)
+    customer_segments = [s for s in results['analyzed_segments'] if s['speaker'].lower() in ['customer', 'cliente', 'client']]
+    # Calculate sentiment volatility (std dev of sentiment score * intensity)
+    sentiment_map = {'positive': 1, 'neutral': 0, 'negative': -1}
+    sentiment_scores = [sentiment_map[s['sentiment']] * s['intensity'] for s in customer_segments]
+    volatility = float(np.std(sentiment_scores)) if sentiment_scores else 0.0
+    # Calculate time spent in each sentiment (proportion)
+    total = len(customer_segments)
+    time_in_sentiment = {k: 0 for k in ['positive', 'neutral', 'negative']}
+    for s in customer_segments:
+        time_in_sentiment[s['sentiment']] += 1
+    for k in time_in_sentiment:
+        time_in_sentiment[k] = (time_in_sentiment[k] / total * 100) if total else 0
+    col1, col2 = st.columns(2)
     with col1:
         st.metric(
             "Mejora del Cliente",
             f"{metrics['customer_improvement']:+.1f}",
             delta=f"{'Mejoró' if metrics['customer_improvement'] > 0 else 'Empeoró'}"
         )
+        st.metric("Volatilidad del Sentimiento", f"{volatility:.2f}")
     with col2:
         success_text = "✅ Exitosa" if metrics['call_success'] else "⚠️ Requiere Atención"
         st.metric("Estado de Llamada", success_text)
-    col3, col4 = st.columns(2)
-    with col3:
         st.metric("Total Segmentos", metrics['total_segments'])
+    col3, col4, col5 = st.columns(3)
+    with col3:
+        st.metric("% Positivo", f"{time_in_sentiment['positive']:.1f}%")
     with col4:
-        accuracy = (metrics['successful_analyses'] / metrics['total_segments']) * 100
-        st.metric("Precisión", f"{accuracy:.1f}%")
+        st.metric("% Neutral", f"{time_in_sentiment['neutral']:.1f}%")
+    with col5:
+        st.metric("% Negativo", f"{time_in_sentiment['negative']:.1f}%")
+    accuracy = (metrics['successful_analyses'] / metrics['total_segments']) * 100
+    st.metric("Precisión", f"{accuracy:.1f}%")
     outcome_mapping = {
         'highly_successful': '🎉 Muy Exitosa',
         'successful': '✅ Exitosa', 
@@ -824,45 +841,56 @@ def show_results(results):
             st.write(f"• {rec}")
     st.subheader("📈 Análisis Visual")
     create_timeline_chart(results)
+    # Time spent in each sentiment bar chart
+    st.subheader("⏳ Tiempo en Cada Sentimiento (Cliente)")
+    fig = go.Figure(data=[
+        go.Bar(
+            x=list(time_in_sentiment.keys()),
+            y=list(time_in_sentiment.values()),
+            marker_color=['#28a745', '#ffc107', '#dc3545']
+        )
+    ])
+    fig.update_layout(
+        title="Proporción de Tiempo en Cada Sentimiento (Cliente)",
+        xaxis_title="Sentimiento",
+        yaxis_title="% del Tiempo",
+        yaxis_range=[0, 100],
+        height=300
+    )
+    st.plotly_chart(fig, use_container_width=True)
     st.subheader("📋 Resultados Detallados")
     show_detailed_table(results)
     st.subheader("💾 Exportar")
     show_export_options(results)
 
 def create_timeline_chart(results):
-    """Create sentiment timeline chart"""
-    
+    """Create sentiment timeline chart (customer only)"""
     timeline_data = []
     for segment in results['analyzed_segments']:
-        numeric_score = {'positive': 1, 'neutral': 0, 'negative': -1}[segment['sentiment']]
-        weighted_score = numeric_score * segment['intensity']
-        
-        timeline_data.append({
-            'timestamp': segment['timestamp'],
-            'speaker': segment['speaker'],
-            'sentiment_score': weighted_score,
-            'sentiment': segment['sentiment'],
-            'text': segment['original_text'][:50] + '...' if len(segment['original_text']) > 50 else segment['original_text']
-        })
-    
+        if segment['speaker'].lower() in ['customer', 'cliente', 'client']:
+            numeric_score = {'positive': 1, 'neutral': 0, 'negative': -1}[segment['sentiment']]
+            weighted_score = numeric_score * segment['intensity']
+            timeline_data.append({
+                'timestamp': segment['timestamp'],
+                'sentiment_score': weighted_score,
+                'sentiment': segment['sentiment'],
+                'text': segment['original_text'][:50] + '...' if len(segment['original_text']) > 50 else segment['original_text']
+            })
     df = pd.DataFrame(timeline_data)
-    
     fig = px.line(
-        df, 
-        x='timestamp', 
+        df,
+        x='timestamp',
         y='sentiment_score',
-        color='speaker',
-        title="Evolución del Sentimiento Durante la Llamada",
+        title="Evolución del Sentimiento del Cliente Durante la Llamada",
         hover_data=['sentiment', 'text'],
+        markers=True,
         height=400
     )
-    
     fig.add_hline(y=0, line_dash="dash", line_color="gray")
     fig.update_layout(
         xaxis_title="Tiempo",
         yaxis_title="Puntuación de Sentimiento"
     )
-    
     st.plotly_chart(fig, use_container_width=True)
 
 def create_sentiment_pie(results):
@@ -881,22 +909,18 @@ def create_sentiment_pie(results):
     st.plotly_chart(fig, use_container_width=True)
 
 def show_detailed_table(results):
-    """Show detailed results table with colors"""
-    
+    """Show detailed results table with colors (customer only)"""
     table_data = []
     for segment in results['analyzed_segments']:
-        table_data.append({
-            'Timestamp': segment['timestamp'],
-            'Speaker': segment['speaker'],
-            'Text': segment['original_text'][:100] + '...' if len(segment['original_text']) > 100 else segment['original_text'],
-            'Sentiment': segment['sentiment'],
-            'Intensity': segment['intensity'],
-            'Context': segment['context']
-        })
-    
+        if segment['speaker'].lower() in ['customer', 'cliente', 'client']:
+            table_data.append({
+                'Timestamp': segment['timestamp'],
+                'Text': segment['original_text'][:100] + '...' if len(segment['original_text']) > 100 else segment['original_text'],
+                'Sentiment': segment['sentiment'],
+                'Intensity': segment['intensity'],
+                'Context': segment['context']
+            })
     df = pd.DataFrame(table_data)
-    
-    # Color function
     def highlight_sentiment(val):
         if val == 'positive':
             return 'background-color: #d1f2d9; color: #155724; font-weight: bold'
@@ -905,7 +929,6 @@ def show_detailed_table(results):
         elif val == 'neutral':
             return 'background-color: #fff3b8; color: #856404; font-weight: bold'
         return ''
-    
     styled_df = df.style.applymap(highlight_sentiment, subset=['Sentiment'])
     st.dataframe(styled_df, use_container_width=True)
 
