@@ -817,7 +817,8 @@ def show_results(results):
         st.metric(
             "Mejora del Cliente",
             f"{metrics['customer_improvement']:+.1f}",
-            delta=f"{'Mejoró' if metrics['customer_improvement'] > 0 else 'Empeoró'}"
+            delta=f"{'Mejoró' if metrics['customer_improvement'] > 0 else 'Empeoró'}",
+            delta_color="normal" if metrics['customer_improvement'] > 0 else "inverse"
         )
         st.metric("Volatilidad del Sentimiento", f"{volatility:.2f}")
     with col2:
